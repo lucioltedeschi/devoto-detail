@@ -5,6 +5,10 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
 import {startSoftwareGolf} from '@/lib/software-golf';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {SSAOPass} from 'three/addons/postprocessing/SSAOPass.js';
+import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import {makeSwirlCanvas,inspectionAmount} from '@/lib/detailing-assets';
 import {createDetailingWorkshop} from '@/lib/detailing-workshop';
 
@@ -24,7 +28,7 @@ const cameraStops=[
 /** Native WebGL scene. The uploaded Golf mesh stays on screen throughout the story. */
 export default function GolfScene({progress,onReady}:Props){
  const host=useRef<HTMLDivElement>(null);
- const [loading,setLoading]=useState(0),[failed,setFailed]=useState(false),[paused,setPaused]=useState(false),[software,setSoftware]=useState(false);
+ const [loading,setLoading]=useState(0),[failed,setFailed]=useState(false),[paused,setPaused]=useState(false),[software,setSoftware]=useState(false),[retry,setRetry]=useState(0);
  const pausedRef=useRef(false);
  useEffect(()=>{pausedRef.current=paused},[paused]);
  useEffect(()=>{
@@ -33,9 +37,12 @@ export default function GolfScene({progress,onReady}:Props){
   let disposed=false,loaded=false,inView=true,model:THREE.Group|undefined;
   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const mobile=window.matchMedia('(max-width:700px)').matches;
+  if(software){setFailed(false);return startSoftwareGolf(container,progress,()=>{setLoading(100);onReady(true)},()=>{setFailed(true);onReady(false)})}
   let renderer:THREE.WebGLRenderer;
-  try{const canvas=document.createElement('canvas');const gl=canvas.getContext('webgl2',{antialias:true,alpha:false,powerPreference:'high-performance'});if(!gl){setSoftware(true);return startSoftwareGolf(container,progress,()=>{setLoading(100);onReady(true)},()=>{setFailed(true);onReady(false)})}renderer=new THREE.WebGLRenderer({canvas,context:gl,antialias:true,alpha:false});}catch{setSoftware(true);return startSoftwareGolf(container,progress,()=>{setLoading(100);onReady(true)},()=>{setFailed(true);onReady(false)})}
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio,mobile?1.75:2));
+  try{const canvas=document.createElement('canvas');const gl=canvas.getContext('webgl2',{antialias:true,alpha:false,powerPreference:'high-performance'});if(!gl){setFailed(true);onReady(false);return}renderer=new THREE.WebGLRenderer({canvas,context:gl,antialias:true,alpha:false});}catch{setFailed(true);onReady(false);return}
+  setFailed(false);setLoading(0);
+  // Supersample even on a 1x desktop display; never silently choose the CPU preview.
+  renderer.setPixelRatio(Math.min(3,Math.max(window.devicePixelRatio,mobile?1.75:2)));
   renderer.outputColorSpace=THREE.SRGBColorSpace;
   renderer.toneMapping=THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure=1.0;
@@ -58,16 +65,21 @@ export default function GolfScene({progress,onReady}:Props){
   const key=new THREE.DirectionalLight('#f1f5ff',1.4);key.position.set(3,6,4);key.castShadow=true;
   key.shadow.mapSize.set(mobile?2048:4096,mobile?2048:4096);
   Object.assign(key.shadow.camera,{left:-4,right:4,top:4,bottom:-4,near:.5,far:18});
-  key.shadow.bias=-.00015;key.shadow.normalBias=.012;scene.add(key);
+  key.shadow.bias=-.0001;key.shadow.normalBias=.004;key.shadow.autoUpdate=false;key.shadow.needsUpdate=true;scene.add(key);
   const rim=new THREE.DirectionalLight('#e5edf5',.9);rim.position.set(-4,3,-3);scene.add(rim);
   const fill=new THREE.DirectionalLight('#c4d0e0',.45);fill.position.set(-4,2,5);scene.add(fill);
+  const targetBuffer=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType,samples:4});
+  const composer=new EffectComposer(renderer,targetBuffer);
+  const renderPass=new RenderPass(scene,camera);composer.addPass(renderPass);
+  const occlusion=new SSAOPass(scene,camera,1,1,32);occlusion.kernelRadius=.14;occlusion.minDistance=.0002;occlusion.maxDistance=.018;composer.addPass(occlusion);
+  const outputPass=new OutputPass();composer.addPass(outputPass);
   const inspectionLight=new THREE.SpotLight('#ffffff',0,5,.32,.75,2);inspectionLight.position.set(.65,2.1,1.9);inspectionLight.target.position.set(.12,.72,1.5);scene.add(inspectionLight,inspectionLight.target);
   const swirls=new THREE.CanvasTexture(makeSwirlCanvas());swirls.minFilter=THREE.LinearMipmapLinearFilter;swirls.magFilter=THREE.LinearFilter;swirls.generateMipmaps=true;
   const inspection={value:0};
   const finish={value:reduced?1:0};
   const paintMaterials:THREE.MeshPhysicalMaterial[]=[];
   const loader=new GLTFLoader();loader.setMeshoptDecoder(MeshoptDecoder);
-  loader.load('/models/golf-gti-mk75.glb?v=quality3',gltf=>{
+  loader.load('/models/golf-gti-mk75.glb?v=fullprecision4',gltf=>{
    if(disposed){gltf.scene.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();const ms=Array.isArray(o.material)?o.material:[o.material];ms.forEach(m=>m.dispose())}});return;}
    model=gltf.scene;model.name='Volkswagen Golf GTI Mk7.5';
    model.traverse(obj=>{
@@ -109,14 +121,14 @@ export default function GolfScene({progress,onReady}:Props){
      }
     }
    });
-   scene.add(model);loaded=true;setLoading(100);onReady(true);
+   scene.add(model);key.shadow.needsUpdate=true;loaded=true;setLoading(100);onReady(true);
   },event=>{if(!disposed&&event.total)setLoading(Math.round(event.loaded/event.total*100))},()=>{if(!disposed){setFailed(true);onReady(false)}});
-  const size=()=>{const w=container.clientWidth,h=container.clientHeight;if(w&&h){renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix()}};
+  const size=()=>{const w=container.clientWidth,h=container.clientHeight;if(w&&h){renderer.setSize(w,h);composer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix()}};
   const resize=new ResizeObserver(size);resize.observe(container);size();
   const intersection=new IntersectionObserver(entries=>{inView=entries[0].isIntersecting},{rootMargin:'80px'});intersection.observe(container);
   const position=new THREE.Vector3(),target=new THREE.Vector3();let smoothed=progress.current,lastFrame=0;const clock=new THREE.Clock();
   renderer.setAnimationLoop((time:number)=>{
-   if(disposed||document.hidden||!inView||time-lastFrame<1000/(mobile?30:45))return;
+   if(disposed||document.hidden||!inView||time-lastFrame<1000/(mobile?45:60))return;
    lastFrame=time;
    const delta=clamp(clock.getDelta(),0,.1);
    smoothed=THREE.MathUtils.damp(smoothed,reduced?0:progress.current,8,delta);
@@ -132,17 +144,17 @@ export default function GolfScene({progress,onReady}:Props){
    finish.value=reduced?1:clamp((smoothed-.48)/.16,0,1);
    inspection.value=reduced?0:inspectionAmount(smoothed);inspectionLight.intensity=inspection.value*7;
    if(loaded){paintMaterials.forEach(m=>{m.clearcoat=1;m.clearcoatRoughness=THREE.MathUtils.lerp(.19,.055,finish.value)})}
-   renderer.render(scene,camera);
+   composer.render();
   });
   return()=>{
    disposed=true;onReady(false);resize.disconnect();intersection.disconnect();renderer.setAnimationLoop(null);
    scene.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose())}});
-   swirls.dispose();workshop.dispose();envTarget.dispose();pmrem.dispose();envPanels.forEach(p=>p.geometry.dispose());panelMat.dispose();key.shadow.map?.dispose();renderer.dispose();renderer.domElement.remove();
+   renderPass.dispose();occlusion.dispose();outputPass.dispose();composer.dispose();swirls.dispose();workshop.dispose();envTarget.dispose();pmrem.dispose();envPanels.forEach(p=>p.geometry.dispose());panelMat.dispose();key.shadow.map?.dispose();renderer.dispose();renderer.domElement.remove();
   };
- },[progress,onReady]);
+ },[progress,onReady,software,retry]);
  return <div ref={host} className="golf-scene">
   {loading<100&&!failed&&<div className="scene-loading" role="status"><span>PREPARANDO EL PRÓXIMO DETALLE</span><i><b style={{width:`${loading}%`}}/></i><small>{loading}%</small></div>}
-  {failed&&<div className="scene-loading" role="status"><span>LA ESCENA 3D NO PUDO INICIARSE</span><p>Podés seguir explorando nuestros servicios.</p><a href="#servicios">Ver servicios ↗</a></div>}
+  {failed&&<div className="scene-loading" role="status"><span>EL RENDER COMPLETO NECESITA WEBGL</span><p>Activá la aceleración gráfica del navegador para ver los materiales, reflejos y detalles completos.</p><button onClick={()=>{setFailed(false);setRetry(v=>v+1)}}>Reintentar</button><button onClick={()=>setSoftware(true)}>Ver vista simplificada</button></div>}
   {software&&loading===100&&<span className="software-badge">3D LIGERO</span>}
   {loading===100&&!software&&<button className="motion-control" onClick={()=>setPaused(!paused)} aria-pressed={paused} aria-label={paused?'Activar movimiento ambiental':'Pausar movimiento ambiental'}>{paused?'▶':'Ⅱ'}<span>{paused?'Activar movimiento':'Pausar movimiento'}</span></button>}
  </div>

@@ -11,3 +11,5 @@
 @media(max-width:700px){.golf-scene{inset:0}.motion-control{right:6%;bottom:85px}.motion-control span{display:none}.hero-description{max-width:230px}.macro-copy{top:17%;max-width:230px}.macro-copy h2{font-size:54px}.hero-finale{top:18%}.hero-finale h2{font-size:62px}.model-credit{font-size:8px}}
 @media(prefers-reduced-motion:reduce){.motion-control{display:none}.golf-scene{display:block}.hero .hero-stage{position:relative}}
 .software-badge{position:absolute;right:4.5%;bottom:93px;font-size:7px;letter-spacing:1.4px;color:#8ca080;z-index:7}
+
+.scene-loading button{display:block;margin:14px auto;padding:10px 14px;border:1px solid #65765b;color:var(--ink);font-size:11px}.scene-loading button:last-child{border:0;font-size:10px;color:var(--muted)}
