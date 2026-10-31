@@ -71,7 +71,7 @@ export default function GolfScene({progress,onReady}:Props){
   const finish={value:reduced?1:0};
   const paintMaterials:THREE.MeshPhysicalMaterial[]=[];
   const loader=new GLTFLoader();loader.setMeshoptDecoder(MeshoptDecoder);
-  loader.load('/models/golf-gti-mk75.glb',gltf=>{
+  loader.load('/models/golf-gti-mk75.glb?v=graphite2',gltf=>{
    if(disposed){gltf.scene.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();const ms=Array.isArray(o.material)?o.material:[o.material];ms.forEach(m=>m.dispose())}});return;}
    model=gltf.scene;model.name='Volkswagen Golf GTI Mk7.5';
    model.traverse(obj=>{
@@ -81,7 +81,7 @@ export default function GolfScene({progress,onReady}:Props){
      if(!(material instanceof THREE.MeshStandardMaterial))continue;
      material.envMapIntensity=1;
      if(material.name==='DD_Graphite_Paint'){
-      const paint=material as THREE.MeshPhysicalMaterial;paintMaterials.push(paint);
+      const paint=material as THREE.MeshPhysicalMaterial;paint.color.set('#30343a');paint.metalness=.72;paintMaterials.push(paint);
       paint.onBeforeCompile=shader=>{
        shader.uniforms.uDDFinish=finish;
        shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vDDPosition;').replace('#include <worldpos_vertex>','#include <worldpos_vertex>\nvDDPosition=(modelMatrix*vec4(transformed,1.0)).xyz;');
@@ -96,14 +96,26 @@ export default function GolfScene({progress,onReady}:Props){
         vec2 ddDelta=vDDPosition.xz-vec2(.12,1.5);
         float ddRadius=length(ddDelta);
         float ddAngle=atan(ddDelta.y,ddDelta.x);
-        float ddArc=pow(max(0.,sin(ddRadius*1450.+sin(ddAngle*27.)*.65)),24.);
-        ddArc*=smoothstep(.30,.7,ddNoise(vDDPosition*90.));
+        float ddWave=ddRadius*490.+sin(ddAngle*19.)*1.2;
+        float ddLine=abs(fract(ddWave/6.283185)-.5);
+        float ddWidth=max(fwidth(ddWave)/6.283185,.008);
+        float ddArc=1.-smoothstep(.018,.018+ddWidth,ddLine);
+        ddArc*=smoothstep(.35,.70,ddNoise(vDDPosition*75.))*pow(max(0.,sin(ddAngle*43.+ddRadius*29.)),3.);
+        float ddHood=smoothstep(.42,.58,vDDPosition.y)*smoothstep(.7,1.1,vDDPosition.z);
+        float ddScratches=ddArc*ddHood*(1.-ddClean);
         float ddRoad=ddNoise(vDDPosition*20.)*.55+ddNoise(vDDPosition*68.)*.25;
         roughnessFactor=mix(.55+ddRoad*.18+ddArc*.15,.15,ddClean);
-        diffuseColor.rgb*=mix(vec3(.56,.50,.41)+vec3(ddRoad*.20+ddArc*.08),vec3(1.),ddClean);
+        diffuseColor.rgb*=mix(vec3(.70,.69,.66)+vec3(ddRoad*.15),vec3(1.),ddClean);
+        diffuseColor.rgb+=vec3(.22,.235,.25)*ddScratches;
+       `).replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
+        totalEmissiveRadiance+=vec3(.055,.06,.065)*ddScratches;
+       `).replace('#include <lights_physical_fragment>',`#include <lights_physical_fragment>
+        #ifdef USE_CLEARCOAT
+        material.clearcoatRoughness=mix(.48,.07,ddClean);
+        #endif
        `);
       };
-      paint.customProgramCacheKey=()=> 'devoto-paint-v1';
+      paint.customProgramCacheKey=()=> 'devoto-paint-v2';
      }
     }
    });
