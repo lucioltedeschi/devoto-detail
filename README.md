@@ -1,6 +1,6 @@
 # Devoto Detail
 
-Primera etapa: experiencia pública de alta fidelidad, con datos de demostración. React 19, Next.js App Router / Vinext, TypeScript y GSAP 3.15.0. El despliegue privado de revisión usa Sites; el proyecto también incluye configuración de Vercel para Next.js.
+Primera etapa: experiencia pública de alta fidelidad, con datos de demostración. React 19, Next.js App Router / Vinext, TypeScript, Three.js y GSAP 3.15.0. El despliegue privado de revisión usa Sites; el proyecto también incluye configuración de Vercel para Next.js.
 
 ## Ejecutar
 
@@ -14,7 +14,9 @@ En Vercel, importar el repositorio, usar el preset Next.js y el comando `npm run
 
 ## Implementado
 
-- Narrativa sticky vinculada al scroll: auto previo, acercamiento, inspección macro, corrección y resultado.
+- Golf GTI Mk7.5 gris en 3D real: recorrido de cámara, acercamiento al capot y barrido de corrección sobre la misma geometría.
+- Materiales físicos, luces de estudio y reflejos WebGL; render de geometría por CPU cuando WebGL no está disponible.
+- Modelos comprimidos con Meshopt: principal de ~1,2 MB, con variante para compatibilidad.
 - Animación reversible con GSAP ScrollTrigger; alternativa con movimiento reducido.
 - Filtro de servicios y fichas con precios fijo, desde, rango y consultar; tarifas por vehículo.
 - Comparador accesible antes/después.
@@ -53,3 +55,18 @@ Las imágenes generadas son ilustraciones publicitarias, no trabajos reales del 
 ## Antes de publicar al público
 
 Cargar logo de alta resolución, catálogo y precios reales, datos exactos del local y WhatsApp; reemplazar mockups de tienda. Completar Supabase Auth, permisos/RLS, almacenamiento, validaciones de servidor y flujo real de pedidos. La versión de revisión permanece privada.
+
+## Modelo 3D y optimización
+
+Modelo provisto por el usuario: Volkswagen Golf GTI Mk7.5, autor DR1KING100K, licencia CC BY 4.0. Fuente: https://sketchfab.com/3d-models/volkswagen-golf-gti-mk75-9f6a2b0181704d2fbfff45ca089fbd47. Se adaptaron materiales, normales, mallas y compresión; se conserva la atribución en la página. El modelo incluye modificaciones estéticas del autor.
+
+Los archivos finales están en `public/models/`. El GLB original de 92 MB no se necesita para ejecutar la web. Para regenerarlos con el original:
+
+```bash
+node scripts/assets/prepare-golf.mjs /ruta/al/original.glb
+node scripts/assets/prepare-golf-fallback.mjs
+```
+
+`components/GolfScene.tsx` configura el recorrido, materiales y render WebGL. `lib/software-golf.ts` implementa el modo compatible, que proyecta la malla real y renderiza únicamente cuando cambia el scroll. Los recursos fotográficos anteriores se conservan para el comparador ilustrativo secundario.
+
+Validación: tipos, build y revisión de escena en navegador con render compatible. El navegador remoto de revisión tiene WebGL deshabilitado; los materiales físicos y reflejos GPU requieren comprobación final en un navegador con aceleración gráfica.
