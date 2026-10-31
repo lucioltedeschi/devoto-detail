@@ -4,17 +4,18 @@ import {useEffect,useRef,useState,type MutableRefObject} from 'react';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
-import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import {startSoftwareGolf} from '@/lib/software-golf';
-import {Reflector} from 'three/addons/objects/Reflector.js';
+import {makeSwirlCanvas,inspectionAmount} from '@/lib/detailing-assets';
+import {createDetailingWorkshop} from '@/lib/detailing-workshop';
 
 type Props={progress:MutableRefObject<number>;onReady:(ready:boolean)=>void};
 const clamp=THREE.MathUtils.clamp;
 const cameraStops=[
  {p:0,pos:[4.4,2.3,6.2],target:[-.45,1.1,0]},
  {p:.20,pos:[3.8,2.0,6.3],target:[-.10,.85,.35]},
- {p:.36,pos:[1.20,1.65,3.25],target:[.0,.70,1.45]},
- {p:.59,pos:[-.05,1.30,2.95],target:[-.12,.65,1.45]},
+ {p:.38,pos:[.12,1.22,1.98],target:[.03,.72,1.50]},
+ {p:.47,pos:[.12,1.22,1.98],target:[.03,.72,1.50]},
+ {p:.64,pos:[.10,1.20,1.97],target:[.03,.72,1.50]},
  {p:.72,pos:[-2.3,1.9,5.3],target:[.0,.82,.35]},
  {p:.91,pos:[-5.4,2.5,7.2],target:[.35,1.05,0]},
  {p:1,pos:[-5.7,2.7,7.0],target:[.35,1.05,0]},
@@ -34,88 +35,77 @@ export default function GolfScene({progress,onReady}:Props){
   const mobile=window.matchMedia('(max-width:700px)').matches;
   let renderer:THREE.WebGLRenderer;
   try{const canvas=document.createElement('canvas');const gl=canvas.getContext('webgl2',{antialias:true,alpha:false,powerPreference:'high-performance'});if(!gl){setSoftware(true);return startSoftwareGolf(container,progress,()=>{setLoading(100);onReady(true)},()=>{setFailed(true);onReady(false)})}renderer=new THREE.WebGLRenderer({canvas,context:gl,antialias:true,alpha:false});}catch{setSoftware(true);return startSoftwareGolf(container,progress,()=>{setLoading(100);onReady(true)},()=>{setFailed(true);onReady(false)})}
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio,mobile?1.3:1.6));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,mobile?1.75:2));
   renderer.outputColorSpace=THREE.SRGBColorSpace;
   renderer.toneMapping=THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure=1.15;
+  renderer.toneMappingExposure=1.0;
+  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   container.insertBefore(renderer.domElement,container.firstChild);
   renderer.domElement.setAttribute('aria-label','Volkswagen Golf GTI Mk7.5 gris: escena 3D animada al recorrer la página');
   renderer.domElement.setAttribute('role','img');
-  const scene=new THREE.Scene();scene.background=new THREE.Color('#09100e');scene.fog=new THREE.Fog('#09100e',13,36);
+  const scene=new THREE.Scene();scene.background=new THREE.Color('#080b0d');scene.fog=new THREE.Fog('#080b0d',13,36);
   const camera=new THREE.PerspectiveCamera(mobile?42:32,1,.04,80);
+  const workshop=createDetailingWorkshop();scene.add(workshop.group);
   const pmrem=new THREE.PMREMGenerator(renderer);
-  const envScene=new RoomEnvironment();
-  // Long studio softboxes create reflections that move over the actual body geometry.
-  const panelMat=new THREE.MeshBasicMaterial({color:new THREE.Color(5,5.3,5.5),side:THREE.DoubleSide});
-  const panel=(w:number,h:number,pos:THREE.Vector3,target:THREE.Vector3)=>{const mesh=new THREE.Mesh(new THREE.PlaneGeometry(w,h),panelMat);mesh.position.copy(pos);mesh.lookAt(target);envScene.add(mesh);};
-  panel(7,.3,new THREE.Vector3(-2,4,1),new THREE.Vector3(0,0,0));
-  panel(7,.18,new THREE.Vector3(2,3,-1),new THREE.Vector3(0,0,0));
-  panel(.5,4,new THREE.Vector3(4,2,3),new THREE.Vector3(0,0,0));
-  const envTarget=pmrem.fromScene(envScene,.025);scene.environment=envTarget.texture;scene.environmentIntensity=.75;
-  const hemisphere=new THREE.HemisphereLight('#dce8ef','#18231b',1.1);scene.add(hemisphere);
-  const key=new THREE.DirectionalLight('#edf4ff',3.2);key.position.set(3,5,4);scene.add(key);
-  const rim=new THREE.DirectionalLight('#cbdccf',2.0);rim.position.set(-4,3,-3);scene.add(rim);
-  const fill=new THREE.DirectionalLight('#a5bbc8',1.1);fill.position.set(-4,2,5);scene.add(fill);
-  const floorGeometry=new THREE.PlaneGeometry(60,60);
-  const floor=new Reflector(floorGeometry,{clipBias:.003,textureWidth:mobile?384:768,textureHeight:mobile?384:768,color:0x242c29,multisample:0});
-  floor.rotation.x=-Math.PI/2;floor.position.y=-.142;scene.add(floor);
-  const shadowCanvas=document.createElement('canvas');shadowCanvas.width=256;shadowCanvas.height=256;
-  const shadowCtx=shadowCanvas.getContext('2d')!;const gradient=shadowCtx.createRadialGradient(128,128,10,128,128,125);gradient.addColorStop(0,'rgba(0,0,0,.9)');gradient.addColorStop(.5,'rgba(0,0,0,.7)');gradient.addColorStop(1,'rgba(0,0,0,0)');shadowCtx.fillStyle=gradient;shadowCtx.fillRect(0,0,256,256);
-  const shadowTexture=new THREE.CanvasTexture(shadowCanvas);
-  const contactShadow=new THREE.Mesh(new THREE.PlaneGeometry(3.1,6.0),new THREE.MeshBasicMaterial({map:shadowTexture,transparent:true,depthWrite:false}));contactShadow.rotation.x=-Math.PI/2;contactShadow.position.y=-.137;scene.add(contactShadow);
-  // Actual light strips remain geometry in the studio; they are not a background photograph.
-  const studio=new THREE.Group();scene.add(studio);
-  const stripMaterial=new THREE.MeshBasicMaterial({color:new THREE.Color(2.2,2.4,2.4)});
-  for(const x of [-3.5,3.5])for(const z of [-3,1,5]){const strip=new THREE.Mesh(new THREE.BoxGeometry(.055,.035,2.5),stripMaterial);strip.position.set(x,3.6,z);studio.add(strip);}
-  const backWall=new THREE.Mesh(new THREE.PlaneGeometry(35,9),new THREE.MeshStandardMaterial({color:'#0b110e',roughness:.8}));backWall.position.set(0,3,-7);scene.add(backWall);
+  const envScene=new THREE.Scene();envScene.background=new THREE.Color(.04,.045,.042);
+  envScene.add(workshop.group.clone(true));envScene.add(new THREE.HemisphereLight('#eef2ee','#171c19',2));
+  // Broad photographic softboxes complement the bay's real LED strips.
+  const panelMat=new THREE.MeshBasicMaterial({color:new THREE.Color(6,6,6),side:THREE.DoubleSide});
+  const panel=(w:number,h:number,pos:THREE.Vector3,target:THREE.Vector3)=>{const mesh=new THREE.Mesh(new THREE.PlaneGeometry(w,h),panelMat);mesh.position.copy(pos);mesh.lookAt(target);envScene.add(mesh);return mesh};
+  const envPanels=[panel(6,.55,new THREE.Vector3(-2,4,1),new THREE.Vector3(0,0,0)),panel(6,.35,new THREE.Vector3(2,3,-1),new THREE.Vector3(0,0,0)),panel(.7,3,new THREE.Vector3(4,2,3),new THREE.Vector3(0,0,0))];
+  const envTarget=pmrem.fromScene(envScene,.02);scene.environment=envTarget.texture;scene.environmentIntensity=.9;
+  const hemisphere=new THREE.HemisphereLight('#dce8ef','#14171c',.45);scene.add(hemisphere);
+  const key=new THREE.DirectionalLight('#f1f5ff',1.4);key.position.set(3,6,4);key.castShadow=true;
+  key.shadow.mapSize.set(mobile?2048:4096,mobile?2048:4096);
+  Object.assign(key.shadow.camera,{left:-4,right:4,top:4,bottom:-4,near:.5,far:18});
+  key.shadow.bias=-.00015;key.shadow.normalBias=.012;scene.add(key);
+  const rim=new THREE.DirectionalLight('#e5edf5',.9);rim.position.set(-4,3,-3);scene.add(rim);
+  const fill=new THREE.DirectionalLight('#c4d0e0',.45);fill.position.set(-4,2,5);scene.add(fill);
+  const inspectionLight=new THREE.SpotLight('#ffffff',0,5,.32,.75,2);inspectionLight.position.set(.65,2.1,1.9);inspectionLight.target.position.set(.12,.72,1.5);scene.add(inspectionLight,inspectionLight.target);
+  const swirls=new THREE.CanvasTexture(makeSwirlCanvas());swirls.minFilter=THREE.LinearMipmapLinearFilter;swirls.magFilter=THREE.LinearFilter;swirls.generateMipmaps=true;
+  const inspection={value:0};
   const finish={value:reduced?1:0};
   const paintMaterials:THREE.MeshPhysicalMaterial[]=[];
   const loader=new GLTFLoader();loader.setMeshoptDecoder(MeshoptDecoder);
-  loader.load('/models/golf-gti-mk75.glb?v=graphite2',gltf=>{
+  loader.load('/models/golf-gti-mk75.glb?v=quality3',gltf=>{
    if(disposed){gltf.scene.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();const ms=Array.isArray(o.material)?o.material:[o.material];ms.forEach(m=>m.dispose())}});return;}
    model=gltf.scene;model.name='Volkswagen Golf GTI Mk7.5';
    model.traverse(obj=>{
     if(!(obj instanceof THREE.Mesh))return;
+    obj.castShadow=true;obj.receiveShadow=true;
     const materials=Array.isArray(obj.material)?obj.material:[obj.material];
     for(const material of materials){
      if(!(material instanceof THREE.MeshStandardMaterial))continue;
      material.envMapIntensity=1;
+     for(const map of [material.map,material.normalMap,material.roughnessMap])if(map)map.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
      if(material.name==='DD_Graphite_Paint'){
       const paint=material as THREE.MeshPhysicalMaterial;paint.color.set('#30343a');paint.metalness=.72;paintMaterials.push(paint);
       paint.onBeforeCompile=shader=>{
-       shader.uniforms.uDDFinish=finish;
+       shader.uniforms.uDDFinish=finish;shader.uniforms.uDDInspection=inspection;shader.uniforms.uDDSwirls={value:swirls};
        shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vDDPosition;').replace('#include <worldpos_vertex>','#include <worldpos_vertex>\nvDDPosition=(modelMatrix*vec4(transformed,1.0)).xyz;');
        shader.fragmentShader=shader.fragmentShader.replace('#include <common>',`#include <common>
         varying vec3 vDDPosition;
         uniform float uDDFinish;
-        float ddHash(vec3 p){p=fract(p*.3183099+vec3(.1,.2,.3));p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
-        float ddNoise(vec3 p){vec3 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(mix(ddHash(i),ddHash(i+vec3(1,0,0)),f.x),mix(ddHash(i+vec3(0,1,0)),ddHash(i+vec3(1,1,0)),f.x),f.y),mix(mix(ddHash(i+vec3(0,0,1)),ddHash(i+vec3(1,0,1)),f.x),mix(ddHash(i+vec3(0,1,1)),ddHash(i+vec3(1,1,1)),f.x),f.y),f.z);}
+        uniform float uDDInspection;
+        uniform sampler2D uDDSwirls;
        `).replace('#include <roughnessmap_fragment>',`#include <roughnessmap_fragment>
-        float ddSweep=mix(-1.6,1.6,uDDFinish);
-        float ddClean=smoothstep(vDDPosition.x-.20,vDDPosition.x+.20,ddSweep);
-        vec2 ddDelta=vDDPosition.xz-vec2(.12,1.5);
-        float ddRadius=length(ddDelta);
-        float ddAngle=atan(ddDelta.y,ddDelta.x);
-        float ddWave=ddRadius*490.+sin(ddAngle*19.)*1.2;
-        float ddLine=abs(fract(ddWave/6.283185)-.5);
-        float ddWidth=max(fwidth(ddWave)/6.283185,.008);
-        float ddArc=1.-smoothstep(.018,.018+ddWidth,ddLine);
-        ddArc*=smoothstep(.35,.70,ddNoise(vDDPosition*75.))*pow(max(0.,sin(ddAngle*43.+ddRadius*29.)),3.);
-        float ddHood=smoothstep(.42,.58,vDDPosition.y)*smoothstep(.7,1.1,vDDPosition.z);
-        float ddScratches=ddArc*ddHood*(1.-ddClean);
-        float ddRoad=ddNoise(vDDPosition*20.)*.55+ddNoise(vDDPosition*68.)*.25;
-        roughnessFactor=mix(.55+ddRoad*.18+ddArc*.15,.15,ddClean);
-        diffuseColor.rgb*=mix(vec3(.70,.69,.66)+vec3(ddRoad*.15),vec3(1.),ddClean);
-        diffuseColor.rgb+=vec3(.22,.235,.25)*ddScratches;
-       `).replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
-        totalEmissiveRadiance+=vec3(.055,.06,.065)*ddScratches;
+        float ddSweep=mix(-.02,.26,uDDFinish);
+        float ddClean=smoothstep(vDDPosition.x-.012,vDDPosition.x+.012,ddSweep);
+        vec2 ddUV=(vDDPosition.xz-vec2(.12,1.5))/.28+.5;
+        float ddSurface=smoothstep(.48,.62,vDDPosition.y)*step(0.,ddUV.x)*step(ddUV.x,1.)*step(0.,ddUV.y)*step(ddUV.y,1.);
+        float ddArc=texture2D(uDDSwirls,clamp(ddUV,0.,1.)).r;
+        float ddScratches=ddArc*ddSurface*uDDInspection*(1.-ddClean);
+        // The whole car starts slightly hazy. Only actual scratch lines reveal locally.
+        roughnessFactor=mix(.29,.14,uDDFinish)+ddScratches*.22;
+        diffuseColor.rgb*=mix(.94,1.,uDDFinish);
+        diffuseColor.rgb+=vec3(.18,.19,.20)*ddScratches;
        `).replace('#include <lights_physical_fragment>',`#include <lights_physical_fragment>
         #ifdef USE_CLEARCOAT
-        material.clearcoatRoughness=mix(.48,.07,ddClean);
+        material.clearcoatRoughness=mix(.19,.055,uDDFinish)+ddScratches*.22;
         #endif
        `);
       };
-      paint.customProgramCacheKey=()=> 'devoto-paint-v2';
+      paint.customProgramCacheKey=()=> 'devoto-aureolas-v4';
      }
     }
    });
@@ -134,19 +124,20 @@ export default function GolfScene({progress,onReady}:Props){
    const a=cameraStops[i],b=cameraStops[i+1];let t=clamp((smoothed-a.p)/(b.p-a.p),0,1);t=t*t*(3-2*t);
    position.fromArray(a.pos).lerp(new THREE.Vector3().fromArray(b.pos),t);
    target.fromArray(a.target).lerp(new THREE.Vector3().fromArray(b.target),t);
-   if(mobile){const far=smoothed<.27||smoothed>.73;position.multiplyScalar(far?1.65:1.04);if(far)target.y+=.15;}
+   if(mobile){const macro=THREE.MathUtils.smoothstep(smoothed,.20,.38)*(1-THREE.MathUtils.smoothstep(smoothed,.64,.82));target.x=THREE.MathUtils.lerp(target.x,.12,macro);position.sub(target).multiplyScalar(THREE.MathUtils.lerp(1.65,1,macro)).add(target);target.y+=.15*(1-macro);}
    // A restrained living shot before scrolling. Pause control and reduced motion disable it.
    const drift=!reduced&&!pausedRef.current&&smoothed<.04?Math.sin(time*.0003)*.08:0;
    position.x+=drift;
    camera.position.copy(position);camera.lookAt(target);
-   finish.value=reduced?1:clamp((smoothed-.34)/.33,0,1);
-   if(loaded){paintMaterials.forEach(m=>{m.clearcoat=THREE.MathUtils.lerp(.3,1,finish.value);m.clearcoatRoughness=THREE.MathUtils.lerp(.38,.07,finish.value)})}
+   finish.value=reduced?1:clamp((smoothed-.48)/.16,0,1);
+   inspection.value=reduced?0:inspectionAmount(smoothed);inspectionLight.intensity=inspection.value*7;
+   if(loaded){paintMaterials.forEach(m=>{m.clearcoat=1;m.clearcoatRoughness=THREE.MathUtils.lerp(.19,.055,finish.value)})}
    renderer.render(scene,camera);
   });
   return()=>{
    disposed=true;onReady(false);resize.disconnect();intersection.disconnect();renderer.setAnimationLoop(null);
    scene.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose())}});
-   floor.getRenderTarget().dispose();shadowTexture.dispose();envTarget.dispose();pmrem.dispose();envScene.dispose();renderer.dispose();renderer.domElement.remove();
+   swirls.dispose();workshop.dispose();envTarget.dispose();pmrem.dispose();envPanels.forEach(p=>p.geometry.dispose());panelMat.dispose();key.shadow.map?.dispose();renderer.dispose();renderer.domElement.remove();
   };
  },[progress,onReady]);
  return <div ref={host} className="golf-scene">
